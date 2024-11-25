@@ -1,4 +1,4 @@
-use std::{error::Error, fs::File, io::BufWriter, path::Path};
+use std::{error::Error, io::BufWriter};
 
 use num_complex::{Complex32, ComplexFloat};
 
@@ -54,9 +54,7 @@ fn get_image_data() -> Vec<u8> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let path = Path::new("result.png");
-    let file = File::create(path)?;
-    let bw = BufWriter::new(file);
+    let bw = BufWriter::new(std::io::stdout());
 
     let mut encoder = png::Encoder::new(bw, W as u32, H as u32);
     encoder.set_color(png::ColorType::Rgb);
@@ -67,8 +65,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let data = &get_image_data();
 
     writer.write_image_data(data)?;
-
-    println!("fin");
     
     Ok(())
 }

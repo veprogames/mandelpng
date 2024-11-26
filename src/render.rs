@@ -1,6 +1,8 @@
 use num_complex::Complex32;
 
-const MAX_ITER: i32 = 256;
+use crate::fractal::Mandelbrot;
+
+const MAX_ITER: u32 = 128;
 
 pub struct Viewport {
     image_width: usize,
@@ -63,13 +65,13 @@ impl Viewport {
         }
     }
 
-    pub fn get_image_data(&self) -> Vec<u8> {
+    pub fn get_image_data(&self, fractal: Mandelbrot) -> Vec<u8> {
         let mut data = vec![0; self.image_width * self.image_height * 3];
 
         for y in 0..self.image_height {
             for x in 0..self.image_width {
                 let (cx, cy) = self.screen_to_world(x, y);
-                let iterations = 2 * get_iterations(Complex32::new(cx, cy));
+                let iterations = 2 * fractal.get_iterations(Complex32::new(cx, cy));
                 let color = get_color(iterations);
                 self.try_set_pixel(&mut data, x, y, (color, color, color));
             }
@@ -79,26 +81,12 @@ impl Viewport {
     }
 }
 
-fn get_iterations(c: Complex32) -> i32 {
-    let mut z = c.clone();
-
-    for iteration in 1..MAX_ITER {
-        z = z.powi(2) + c;
-
-        if z.re.powf(2.0) + z.im.powf(2.0) > 4.0 {
-            return iteration;
-        }
-    }
-
-    MAX_ITER
-}
-
 fn remap(v: f32, i0: f32, i1: f32, o0: f32, o1: f32) -> f32 {
     let fact = (o1 - o0) / (i1 - i0);
     (v - i0) * fact + o0
 }
 
-fn get_color(iterations: i32) -> u8 {
+fn get_color(iterations: u32) -> u8 {
     if iterations >= MAX_ITER {
         0
     } else {

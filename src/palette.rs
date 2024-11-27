@@ -94,6 +94,39 @@ impl Palette {
     }
 }
 
+pub struct BailoutPalette {
+    inner: Color,
+    outer: Palette,
+    escape_radius: f32,
+}
+
+impl Default for BailoutPalette {
+    fn default() -> Self {
+        Self {
+            escape_radius: 4.0,
+            inner: Color(0, 0, 0),
+            outer: Palette::new(vec![
+                Color(0, 0, 0),
+                Color(255, 255, 255)
+            ]).make_looped()
+        }
+    }
+}
+
+impl BailoutPalette {
+    pub fn escape_radius(&self) -> f32 {
+        self.escape_radius
+    }
+
+    pub fn inner(&self) -> Color {
+        self.inner
+    }
+
+    pub fn outer(&self) -> &Palette {
+        &self.outer
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::palette::Color;

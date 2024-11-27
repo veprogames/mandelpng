@@ -2,8 +2,6 @@ use num_complex::Complex32;
 
 use crate::{fractal::Mandelbrot, palette::{Color, Palette}};
 
-const MAX_ITER: u32 = 128;
-
 pub struct Viewport {
     image_width: usize,
     image_height: usize,
@@ -81,13 +79,7 @@ impl Viewport {
             for x in 0..self.image_width {
                 let (cx, cy) = self.screen_to_world(x, y);
                 let iterations = 2 * fractal.get_iterations(Complex32::new(cx, cy));
-                let gradient = (iterations as f32 / 32.0) % 1.0;
-                let color = if iterations >= MAX_ITER {
-                    Color::new(0, 0, 0)
-                } else {
-                    palette.sample(gradient)
-                        .expect("color must be Some because palette has been asserted to be nonempty")
-                };
+                let color = fractal.get_color(iterations);
                 self.try_set_pixel(&mut data, x, y, color);
             }
         }

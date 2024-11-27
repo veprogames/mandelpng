@@ -5,6 +5,7 @@ use render::Viewport;
 
 mod render;
 mod fractal;
+mod palette;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let viewport = Viewport::default();

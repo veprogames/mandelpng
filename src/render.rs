@@ -1,6 +1,6 @@
 use num_complex::Complex32;
 
-use crate::fractal::Mandelbrot;
+use crate::{fractal::Mandelbrot, palette::{Color, Palette}};
 
 const MAX_ITER: u32 = 128;
 
@@ -55,25 +55,40 @@ impl Viewport {
     }
 
     /// Note: Fails silently if indexing fails :(
-    fn try_set_pixel(&self, data: &mut [u8], x: usize, y: usize, rgb: (u8, u8, u8)) {
+    fn try_set_pixel(&self, data: &mut [u8], x: usize, y: usize, rgb: Color) {
         let idx = (x + y * self.image_width) * 3;
 
         if data.get(idx).is_some() && data.get(idx + 2).is_some() {
-            data[idx] = rgb.0;
-            data[idx + 1] = rgb.1;
-            data[idx + 2] = rgb.2;
+            data[idx] = rgb.r();
+            data[idx + 1] = rgb.g();
+            data[idx + 2] = rgb.b();
         }
     }
 
     pub fn get_image_data(&self, fractal: Mandelbrot) -> Vec<u8> {
         let mut data = vec![0; self.image_width * self.image_height * 3];
 
+        let palette = Palette::new(vec![
+            Color::new(67, 53, 167),
+            Color::new(128, 196, 233),
+            Color::new(255, 246, 233),
+            Color::new(255, 127, 62),
+        ]).make_looped();
+
+        assert!(!palette.is_empty());
+
         for y in 0..self.image_height {
             for x in 0..self.image_width {
                 let (cx, cy) = self.screen_to_world(x, y);
                 let iterations = 2 * fractal.get_iterations(Complex32::new(cx, cy));
-                let color = get_color(iterations);
-                self.try_set_pixel(&mut data, x, y, (color, color, color));
+                let gradient = (iterations as f32 / 32.0) % 1.0;
+                let color = if iterations >= MAX_ITER {
+                    Color::new(0, 0, 0)
+                } else {
+                    palette.sample(gradient)
+                        .expect("color must be Some because palette has been asserted to be nonempty")
+                };
+                self.try_set_pixel(&mut data, x, y, color);
             }
         }
 
@@ -84,12 +99,4 @@ impl Viewport {
 fn remap(v: f32, i0: f32, i1: f32, o0: f32, o1: f32) -> f32 {
     let fact = (o1 - o0) / (i1 - i0);
     (v - i0) * fact + o0
-}
-
-fn get_color(iterations: u32) -> u8 {
-    if iterations >= MAX_ITER {
-        0
-    } else {
-        (4 * iterations % 256) as u8
-    }
 }

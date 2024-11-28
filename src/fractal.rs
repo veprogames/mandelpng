@@ -30,7 +30,10 @@ impl Default for Mandelbrot {
 
 impl Mandelbrot {
     pub fn get_iterations(&self, c: Complex32) -> u32 {
-        let mut z = self.z0;
+        let mut z = match self.mode {
+            MandelbrotMode::Normal => self.z0,
+            MandelbrotMode::Julia(_) => self.z0.powi(2) + c,
+        };
 
         let c = match self.mode {
             MandelbrotMode::Normal => c,

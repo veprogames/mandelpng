@@ -1,7 +1,9 @@
 use num_complex::Complex32;
+use serde::{Deserialize, Serialize};
 
 use crate::{fractal::Mandelbrot, palette::{Color, Palette}};
 
+#[derive(Serialize, Deserialize)]
 pub struct Viewport {
     image_width: usize,
     image_height: usize,
@@ -63,7 +65,7 @@ impl Viewport {
         }
     }
 
-    pub fn get_image_data(&self, fractal: Mandelbrot) -> Vec<u8> {
+    pub fn get_image_data(&self, fractal: &Mandelbrot) -> Vec<u8> {
         let mut data = vec![0; self.image_width * self.image_height * 3];
 
         let palette = Palette::new(vec![
@@ -91,4 +93,29 @@ impl Viewport {
 fn remap(v: f32, i0: f32, i1: f32, o0: f32, o1: f32) -> f32 {
     let fact = (o1 - o0) / (i1 - i0);
     (v - i0) * fact + o0
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Scene {
+    fractal: Mandelbrot,
+    viewport: Viewport,
+}
+
+impl Default for Scene {
+    fn default() -> Self {
+        Scene {
+            fractal: Mandelbrot::default(),
+            viewport: Viewport::default(),
+        }
+    }
+}
+
+impl Scene {
+    pub fn viewport(&self) -> &Viewport {
+        &self.viewport
+    }
+
+    pub fn get_image_data(&self) -> Vec<u8> {
+        self.viewport.get_image_data(&self.fractal)
+    }
 }

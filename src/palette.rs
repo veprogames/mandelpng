@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Color(u8, u8, u8);
 
 impl Color {
@@ -40,6 +42,7 @@ impl Color {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Palette {
     colors: Vec<Color>,
 }
@@ -94,6 +97,7 @@ impl Palette {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct BailoutPalette {
     inner: Color,
     outer: Palette,

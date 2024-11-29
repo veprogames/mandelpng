@@ -4,9 +4,61 @@ use serde::{Deserialize, Serialize};
 use crate::{fractal::Mandelbrot, palette::{Color, Palette}};
 
 #[derive(Serialize, Deserialize)]
+pub struct Image {
+    width: usize,
+    height: usize,
+    data: Vec<u8>,
+}
+
+impl Default for Image {
+    fn default() -> Self {
+        Self {
+            width: 1920,
+            height: 1080,
+            data: vec![],
+        }
+    }
+}
+
+impl Image {
+    pub fn new(width: usize, height: usize) -> Self {
+        Self {
+            width,
+            height,
+            data: vec![0u8; width * height * Image::channel_count()],
+        }
+    }
+
+    fn channel_count() -> usize {
+        3
+    }
+
+    fn get_index(&self, x: usize, y: usize) -> usize {
+        (x + y * self.width) * Image::channel_count()
+    }
+
+    fn has_pixel(&self, x: usize, y: usize) -> bool{
+        let idx = self.get_index(x, y);
+        let last_channel = idx + Image::channel_count() - 1;
+        return self.data.get(idx).is_some() &&
+            self.data.get(last_channel).is_some()
+    }
+
+    /// Note: Fails silently if indexing fails :(
+    fn try_set_pixel(&mut self, x: usize, y: usize, rgb: Color) {
+        let idx = self.get_index(x, y);
+
+        if self.has_pixel(x, y) {
+            self.data[idx] = rgb.r();
+            self.data[idx + 1] = rgb.g();
+            self.data[idx + 2] = rgb.b();
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Viewport {
-    image_width: usize,
-    image_height: usize,
+    image: Image,
     cx: f32,
     cy: f32,
     zoom: f32,
@@ -15,8 +67,7 @@ pub struct Viewport {
 impl Default for Viewport {
     fn default() -> Self {
         Viewport {
-            image_width: 1920,
-            image_height: 1080,
+            image: Image::new(1920, 1080),
             cx: -0.5,
             cy: 0.0,
             zoom: 2.0,
@@ -26,48 +77,36 @@ impl Default for Viewport {
 
 impl Viewport {
     pub fn image_width(&self) -> usize {
-        self.image_width
+        self.image.width
     }
 
     pub fn image_height(&self) -> usize {
-        self.image_height
+        self.image.height
     }
 
     fn screen_to_world(&self, screen_x: usize, screen_y: usize) -> (f32, f32) {
-        let aspect_ratio = self.image_width as f32 / self.image_height as f32;
+        let (width_f32, height_f32) = (self.image.width as f32, self.image.height as f32);
+        let aspect_ratio = width_f32 / height_f32;
 
         (
             remap(
                 screen_x as f32,
                 0.0,
-                self.image_width as f32,
+                width_f32,
                 self.cx - self.zoom * aspect_ratio,
                 self.cx + self.zoom * aspect_ratio,
             ),
             remap(
                 screen_y as f32,
                 0.0,
-                self.image_height as f32,
+                height_f32,
                 self.cy - self.zoom,
                 self.cy + self.zoom,
             ),
         )
     }
 
-    /// Note: Fails silently if indexing fails :(
-    fn try_set_pixel(&self, data: &mut [u8], x: usize, y: usize, rgb: Color) {
-        let idx = (x + y * self.image_width) * 3;
-
-        if data.get(idx).is_some() && data.get(idx + 2).is_some() {
-            data[idx] = rgb.r();
-            data[idx + 1] = rgb.g();
-            data[idx + 2] = rgb.b();
-        }
-    }
-
-    pub fn get_image_data(&self, fractal: &Mandelbrot) -> Vec<u8> {
-        let mut data = vec![0; self.image_width * self.image_height * 3];
-
+    pub fn generate_image(&mut self, fractal: &Mandelbrot) -> &[u8] {
         let palette = Palette::new(vec![
             Color::new(67, 53, 167),
             Color::new(128, 196, 233),
@@ -77,16 +116,16 @@ impl Viewport {
 
         assert!(!palette.is_empty());
 
-        for y in 0..self.image_height {
-            for x in 0..self.image_width {
+        for y in 0..self.image.height {
+            for x in 0..self.image.width {
                 let (cx, cy) = self.screen_to_world(x, y);
                 let iterations = 2 * fractal.get_iterations(Complex32::new(cx, cy));
                 let color = fractal.get_color(iterations);
-                self.try_set_pixel(&mut data, x, y, color);
+                self.image.try_set_pixel(x, y, color);
             }
         }
 
-        data.to_vec()
+        &self.image.data
     }
 }
 
@@ -115,7 +154,7 @@ impl Scene {
         &self.viewport
     }
 
-    pub fn get_image_data(&self) -> Vec<u8> {
-        self.viewport.get_image_data(&self.fractal)
+    pub fn get_image_data(&mut self) -> &[u8] {
+        self.viewport.generate_image(&self.fractal)
     }
 }

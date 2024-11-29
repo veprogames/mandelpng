@@ -9,7 +9,7 @@ mod palette;
 fn main() -> Result<(), Box<dyn Error>> {
     let mut input = String::new();
 
-    let scene = match io::stdin().read_line(&mut input) {
+    let mut scene = match io::stdin().read_line(&mut input) {
         Ok(_) => match serde_json::from_str(&input) {
             Ok(scene) => scene,
             Err(_) => Scene::default()
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut writer = encoder.write_header()?;
 
-    let data = &scene.get_image_data();
+    let data = scene.get_image_data();
 
     writer.write_image_data(data)?;
 

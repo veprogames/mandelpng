@@ -3,7 +3,7 @@ use std::{error::Error, io::{self, BufWriter}};
 use num_complex::Complex32;
 use serde::{Deserialize, Serialize};
 
-use crate::{fractal::Mandelbrot, palette::Color, utils::remap};
+use crate::{fractal::Mandelbrot, palette::Color, utils::{average_color, remap}};
 
 #[derive(Serialize, Deserialize)]
 pub struct Image {
@@ -82,6 +82,7 @@ impl Image {
 pub struct Viewport {
     image_width: usize,
     image_height: usize,
+    super_sampling: u32,
     cx: f32,
     cy: f32,
     zoom: f32,
@@ -92,6 +93,7 @@ impl Default for Viewport {
         Viewport {
             image_width: 1920,
             image_height: 1080,
+            super_sampling: 2,
             cx: 0.0,
             cy: 0.0,
             zoom: 2.0,
@@ -108,20 +110,20 @@ impl Viewport {
         self.image_width
     }
 
-    fn screen_to_world(&self, screen_x: usize, screen_y: usize) -> (f32, f32) {
+    fn screen_to_world(&self, screen_x: f32, screen_y: f32) -> (f32, f32) {
         let (width_f32, height_f32) = (self.image_width as f32, self.image_height as f32);
         let aspect_ratio = width_f32 / height_f32;
 
         (
             remap(
-                screen_x as f32,
+                screen_x,
                 0.0,
                 width_f32,
                 self.cx - self.zoom * aspect_ratio,
                 self.cx + self.zoom * aspect_ratio,
             ),
             remap(
-                screen_y as f32,
+                screen_y,
                 0.0,
                 height_f32,
                 self.cy - self.zoom,
@@ -130,14 +132,27 @@ impl Viewport {
         )
     }
 
+    fn calculate_pixel(&self, x: usize, y: usize, super_sampling: u32, fractal: &Mandelbrot) -> Color {
+        let mut colors: Vec<Color> = vec![];
+        for sx in 0..super_sampling {
+            for sy in 0..super_sampling {
+                let screen_x = x as f32 + sx as f32 / super_sampling as f32;
+                let screen_y = y as f32 + sy as f32 / super_sampling as f32;
+                let (cx, cy) = self.screen_to_world(screen_x, screen_y);
+                let iterations = 2 * fractal.get_iterations(Complex32::new(cx, cy));
+                let color= fractal.get_color(iterations);
+                colors.push(color);
+            }
+        }
+        average_color(&colors)
+    }
+
     pub fn generate_image(&mut self, fractal: &Mandelbrot) -> Image {
         let mut image = Image::new(self.image_width, self.image_height);
 
         for y in 0..image.height {
             for x in 0..image.width {
-                let (cx, cy) = self.screen_to_world(x, y);
-                let iterations = 2 * fractal.get_iterations(Complex32::new(cx, cy));
-                let color = fractal.get_color(iterations);
+                let color = self.calculate_pixel(x, y, self.super_sampling, fractal);
                 image.try_set_pixel(x, y, color);
             }
         }

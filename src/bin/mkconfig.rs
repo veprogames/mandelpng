@@ -5,7 +5,7 @@ use mandelpng::render::Scene;
 extern crate mandelpng;
 
 fn main() -> Result<(), Box<dyn Error>>{
-    let json = serde_json::to_string(&Scene::default())?;
+    let json = serde_json::to_string_pretty(&Scene::default())?;
     print!("{}", json);
     Ok(())
 }

@@ -1,16 +1,11 @@
-use std::{error::Error, io};
+use std::{error::Error, io::{stdin, Read}};
 use mandelpng::render::Scene;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut input = String::new();
 
-    let mut scene = match io::stdin().read_line(&mut input) {
-        Ok(_) => match serde_json::from_str(&input) {
-            Ok(scene) => scene,
-            Err(_) => Scene::default()
-        },
-        Err(_) => Scene::default()
-    };
+    stdin().read_to_string(&mut input)?;
+    let mut scene: Scene = serde_json::from_str(&input)?;
 
     let image = scene.generate_image();
 

@@ -1,10 +1,5 @@
-use std::{error::Error, io::{self, BufWriter}};
-
-use render::Scene;
-
-pub mod render;
-mod fractal;
-mod palette;
+use std::{error::Error, io};
+use mandelpng::render::Scene;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut input = String::new();
@@ -17,21 +12,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         Err(_) => Scene::default()
     };
 
-    let bw = BufWriter::new(std::io::stdout());
+    let image = scene.generate_image();
 
-    let mut encoder = png::Encoder::new(
-        bw,
-        scene.viewport().image_width() as u32,
-        scene.viewport().image_height() as u32,
-    );
-    encoder.set_color(png::ColorType::Rgb);
-    encoder.set_depth(png::BitDepth::Eight);
-
-    let mut writer = encoder.write_header()?;
-
-    let data = scene.get_image_data();
-
-    writer.write_image_data(data)?;
+    image.write_to_stdout()?;
 
     Ok(())
 }

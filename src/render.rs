@@ -1,7 +1,9 @@
+use std::{error::Error, io::{self, BufWriter}};
+
 use num_complex::Complex32;
 use serde::{Deserialize, Serialize};
 
-use crate::{fractal::Mandelbrot, palette::{Color, Palette}};
+use crate::{fractal::Mandelbrot, palette::Color, utils::remap};
 
 #[derive(Serialize, Deserialize)]
 pub struct Image {
@@ -54,11 +56,32 @@ impl Image {
             self.data[idx + 2] = rgb.b();
         }
     }
+
+    pub fn write_to_stdout(&self) -> Result<(), Box<dyn Error>>{
+        let bw = BufWriter::new(io::stdout());
+
+        let mut encoder = png::Encoder::new(
+            bw,
+            self.width as u32,
+            self.height as u32,
+        );
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+    
+        let mut writer = encoder.write_header()?;
+    
+        let data = &self.data;
+    
+        writer.write_image_data(data)?;
+
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Viewport {
-    image: Image,
+    image_width: usize,
+    image_height: usize,
     cx: f32,
     cy: f32,
     zoom: f32,
@@ -67,8 +90,9 @@ pub struct Viewport {
 impl Default for Viewport {
     fn default() -> Self {
         Viewport {
-            image: Image::new(1920, 1080),
-            cx: -0.5,
+            image_width: 1920,
+            image_height: 1080,
+            cx: 0.0,
             cy: 0.0,
             zoom: 2.0,
         }
@@ -77,15 +101,15 @@ impl Default for Viewport {
 
 impl Viewport {
     pub fn image_width(&self) -> usize {
-        self.image.width
+        self.image_width
     }
 
     pub fn image_height(&self) -> usize {
-        self.image.height
+        self.image_width
     }
 
     fn screen_to_world(&self, screen_x: usize, screen_y: usize) -> (f32, f32) {
-        let (width_f32, height_f32) = (self.image.width as f32, self.image.height as f32);
+        let (width_f32, height_f32) = (self.image_width as f32, self.image_height as f32);
         let aspect_ratio = width_f32 / height_f32;
 
         (
@@ -106,32 +130,20 @@ impl Viewport {
         )
     }
 
-    pub fn generate_image(&mut self, fractal: &Mandelbrot) -> &[u8] {
-        let palette = Palette::new(vec![
-            Color::new(67, 53, 167),
-            Color::new(128, 196, 233),
-            Color::new(255, 246, 233),
-            Color::new(255, 127, 62),
-        ]).make_looped();
+    pub fn generate_image(&mut self, fractal: &Mandelbrot) -> Image {
+        let mut image = Image::new(self.image_width, self.image_height);
 
-        assert!(!palette.is_empty());
-
-        for y in 0..self.image.height {
-            for x in 0..self.image.width {
+        for y in 0..image.height {
+            for x in 0..image.width {
                 let (cx, cy) = self.screen_to_world(x, y);
                 let iterations = 2 * fractal.get_iterations(Complex32::new(cx, cy));
                 let color = fractal.get_color(iterations);
-                self.image.try_set_pixel(x, y, color);
+                image.try_set_pixel(x, y, color);
             }
         }
 
-        &self.image.data
+        image
     }
-}
-
-fn remap(v: f32, i0: f32, i1: f32, o0: f32, o1: f32) -> f32 {
-    let fact = (o1 - o0) / (i1 - i0);
-    (v - i0) * fact + o0
 }
 
 #[derive(Serialize, Deserialize)]
@@ -154,7 +166,7 @@ impl Scene {
         &self.viewport
     }
 
-    pub fn get_image_data(&mut self) -> &[u8] {
+    pub fn generate_image(&mut self) -> Image {
         self.viewport.generate_image(&self.fractal)
     }
 }

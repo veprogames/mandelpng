@@ -6,18 +6,22 @@ use serde::{Deserialize, Serialize};
 use crate::{fractal::Mandelbrot, palette::Color, utils::{average_color, remap}};
 
 #[derive(Debug)]
-pub struct ImageCreationError{
-    got_len: usize,
-    expected: usize,
+pub enum ImageError{
+    Creation{ got_len: usize, expected: usize },
+    Threading,
 }
 
-impl Display for ImageCreationError {
+impl Display for ImageError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ImageCreationError (got data len {}, expected {}", self.got_len, self.expected)
+        match self {
+            Self::Creation { got_len, expected } => 
+                write!(f, "ImageCreationError (got data len {}, expected {}", got_len, expected),
+            Self::Threading => write!(f, "Threading Error"),
+        }
     }
 }
 
-impl Error for ImageCreationError {
+impl Error for ImageError {
     fn description(&self) -> &str {
         "Failed to create Image"
     }
@@ -49,9 +53,9 @@ impl Image {
         }
     }
 
-    pub fn from(width: usize, height: usize, data: Vec<u8>) -> Result<Self, ImageCreationError> {
+    pub fn from(width: usize, height: usize, data: Vec<u8>) -> Result<Self, ImageError> {
         if width * height * Self::channel_count() != data.len() {
-            Err(ImageCreationError{
+            Err(ImageError::Creation {
                 got_len: data.len(),
                 expected: width * height * Self::channel_count(),
             })
@@ -213,7 +217,7 @@ impl Scene {
         tasks
     }
 
-    pub fn generate_image(&self) -> Result<Image, ImageCreationError> {
+    pub fn generate_image(&self) -> Result<Image, ImageError> {
         let mut data: Vec<u8> = Vec::with_capacity(self.viewport.image_width * self.viewport.image_height * Image::channel_count());
 
         let mut handles = vec![];
@@ -225,7 +229,7 @@ impl Scene {
         }
 
         for h in handles {
-            data.append(&mut h.join().expect("Thread should run successfully"));
+            data.append(&mut h.join().map_err(|_| ImageError::Threading)?);
         }
 
         Image::from(self.viewport.image_width, self.viewport.image_height, data)

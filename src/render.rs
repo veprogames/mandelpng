@@ -1,9 +1,27 @@
-use std::{error::Error, io::{self, BufWriter}};
+use std::{error::Error, fmt::Display, io::{self, BufWriter}, thread};
 
 use num_complex::Complex32;
 use serde::{Deserialize, Serialize};
 
 use crate::{fractal::Mandelbrot, palette::Color, utils::{average_color, remap}};
+
+#[derive(Debug)]
+pub struct ImageCreationError{
+    got_len: usize,
+    expected: usize,
+}
+
+impl Display for ImageCreationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ImageCreationError (got data len {}, expected {}", self.got_len, self.expected)
+    }
+}
+
+impl Error for ImageCreationError {
+    fn description(&self) -> &str {
+        "Failed to create Image"
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Image {
@@ -31,30 +49,23 @@ impl Image {
         }
     }
 
+    pub fn from(width: usize, height: usize, data: Vec<u8>) -> Result<Self, ImageCreationError> {
+        if width * height * Self::channel_count() != data.len() {
+            Err(ImageCreationError{
+                got_len: data.len(),
+                expected: width * height * Self::channel_count(),
+            })
+        } else {
+            Ok(Self {
+                width,
+                height,
+                data
+            })
+        }
+    }
+
     fn channel_count() -> usize {
         3
-    }
-
-    fn get_index(&self, x: usize, y: usize) -> usize {
-        (x + y * self.width) * Image::channel_count()
-    }
-
-    fn has_pixel(&self, x: usize, y: usize) -> bool{
-        let idx = self.get_index(x, y);
-        let last_channel = idx + Image::channel_count() - 1;
-        return self.data.get(idx).is_some() &&
-            self.data.get(last_channel).is_some()
-    }
-
-    /// Note: Fails silently if indexing fails :(
-    fn try_set_pixel(&mut self, x: usize, y: usize, rgb: Color) {
-        let idx = self.get_index(x, y);
-
-        if self.has_pixel(x, y) {
-            self.data[idx] = rgb.r();
-            self.data[idx + 1] = rgb.g();
-            self.data[idx + 2] = rgb.b();
-        }
     }
 
     pub fn write_to_stdout(&self) -> Result<(), Box<dyn Error>>{
@@ -78,40 +89,18 @@ impl Image {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Viewport {
-    image_width: usize,
-    image_height: usize,
-    super_sampling: u32,
-    cx: f32,
-    cy: f32,
-    zoom: f32,
+struct RenderTask {
+    viewport: Viewport,
+    fractal: Mandelbrot,
+    ymin: usize,
+    ymax: usize,
 }
 
-impl Default for Viewport {
-    fn default() -> Self {
-        Viewport {
-            image_width: 1920,
-            image_height: 1080,
-            super_sampling: 2,
-            cx: 0.0,
-            cy: 0.0,
-            zoom: 2.0,
-        }
-    }
-}
-
-impl Viewport {
-    pub fn image_width(&self) -> usize {
-        self.image_width
-    }
-
-    pub fn image_height(&self) -> usize {
-        self.image_width
-    }
-
+impl RenderTask {
     fn screen_to_world(&self, screen_x: f32, screen_y: f32) -> (f32, f32) {
-        let (width_f32, height_f32) = (self.image_width as f32, self.image_height as f32);
+        let (width_f32, height_f32) = (self.viewport.image_width as f32, self.viewport.image_height as f32);
+        let (cx, cy) = (self.viewport.cx, self.viewport.cy);
+        let zoom = self.viewport.zoom;
         let aspect_ratio = width_f32 / height_f32;
 
         (
@@ -119,15 +108,15 @@ impl Viewport {
                 screen_x,
                 0.0,
                 width_f32,
-                self.cx - self.zoom * aspect_ratio,
-                self.cx + self.zoom * aspect_ratio,
+                cx - zoom * aspect_ratio,
+                cy + zoom * aspect_ratio,
             ),
             remap(
                 screen_y,
                 0.0,
                 height_f32,
-                self.cy - self.zoom,
-                self.cy + self.zoom,
+                cy - zoom,
+                cy + zoom,
             ),
         )
     }
@@ -147,17 +136,43 @@ impl Viewport {
         average_color(&colors)
     }
 
-    pub fn generate_image(&mut self, fractal: &Mandelbrot) -> Image {
-        let mut image = Image::new(self.image_width, self.image_height);
+    pub fn run(&self) -> Vec<u8> {
+        let RenderTask{ymin, ymax, ..} = self;
+        let image_width = self.viewport.image_width;
+        
+        let mut data = vec![];
 
-        for y in 0..image.height {
-            for x in 0..image.width {
-                let color = self.calculate_pixel(x, y, self.super_sampling, fractal);
-                image.try_set_pixel(x, y, color);
+        for y in *ymin..=*ymax {
+            for x in 0..image_width {
+                let color = self.calculate_pixel(x, y, self.viewport.super_sampling, &self.fractal);
+                data.append(&mut vec![color.r(), color.g(), color.b()]);
             }
         }
 
-        image
+        data
+    } 
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Viewport {
+    image_width: usize,
+    image_height: usize,
+    super_sampling: u32,
+    cx: f32,
+    cy: f32,
+    zoom: f32,
+}
+
+impl Default for Viewport {
+    fn default() -> Self {
+        Viewport {
+            image_width: 1920,
+            image_height: 1080,
+            super_sampling: 2,
+            cx: 0.0,
+            cy: 0.0,
+            zoom: 2.0,
+        }
     }
 }
 
@@ -181,7 +196,38 @@ impl Scene {
         &self.viewport
     }
 
-    pub fn generate_image(&mut self) -> Image {
-        self.viewport.generate_image(&self.fractal)
+    fn create_tasks(&self) -> Vec<RenderTask> {
+        let h = self.viewport.image_height;
+        let step = h / 64;
+        let mut tasks = vec![];
+        
+        for y in (0..h).step_by(step) {
+            tasks.push(RenderTask {
+                viewport: self.viewport.clone(),
+                fractal: self.fractal.clone(),
+                ymin: y,
+                ymax: (y + step - 1).min(h - 1),
+            });
+        }
+
+        tasks
+    }
+
+    pub fn generate_image(&self) -> Result<Image, ImageCreationError> {
+        let mut data: Vec<u8> = Vec::with_capacity(self.viewport.image_width * self.viewport.image_height * Image::channel_count());
+
+        let mut handles = vec![];
+
+        for task in self.create_tasks() {
+            handles.push(thread::spawn(move || {    
+                task.run()
+            }));
+        }
+
+        for h in handles {
+            data.append(&mut h.join().expect("Thread should run successfully"));
+        }
+
+        Image::from(self.viewport.image_width, self.viewport.image_height, data)
     }
 }

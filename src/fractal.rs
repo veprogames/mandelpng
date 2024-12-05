@@ -3,13 +3,13 @@ use serde::{Serialize, Deserialize};
 
 use crate::palette::{BailoutPalette, Color};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum MandelbrotMode {
     Normal,
     Julia(Complex32),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Mandelbrot {
     z0: Complex32,
     max_iterations: u32,

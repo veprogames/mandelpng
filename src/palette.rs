@@ -42,7 +42,7 @@ impl Color {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Palette {
     colors: Vec<Color>,
 }
@@ -97,7 +97,7 @@ impl Palette {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct BailoutPalette {
     inner: Color,
     outer: Palette,
